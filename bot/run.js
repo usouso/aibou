@@ -39,18 +39,22 @@ const STRATEGIES = {
       if (h.length === 2 && sim.fusionOf(h[0], h[1])) ctx.send();
     },
   },
-  // 参考: 2つたまったら中身を見ずに送る
+  // 4. 2つたまったら中身を見ずに送る
   pairs: {
     onPickup(ctx) { if (ctx.held.length === 2) ctx.send(); },
   },
-  // 参考: 合体を狙うが、相棒の体力が 4 割を切ったら持っているものをすぐ送る
+  // 5. 合体を狙うが、相棒の部品が落ちそう（残り 4 秒未満）か、体力が 4 割以下なら持っているものをすぐ送る
   fusionOrPanic: {
     onPickup(ctx) {
       const h = ctx.held;
       if (h.length === 2 && sim.fusionOf(h[0], h[1])) ctx.send();
     },
     onTick(ctx) {
-      if (ctx.held.length > 0 && ctx.battle.partner.hp < ctx.battle.partner.maxHp * 0.4) ctx.send();
+      if (ctx.held.length === 0) return;
+      const p = ctx.battle.partner;
+      const lowHp = p.hp <= p.maxHp * 0.4;
+      const expiring = p.parts.some(part => part.life < 4);
+      if (lowHp || expiring) ctx.send();
     },
   },
 };
@@ -103,6 +107,7 @@ function runOnce(strategy, seed) {
     bossHpLeft: battle.state === 'win' ? 0 : (boss ? boss.hp : sim.CONFIG.enemies.boss.hp),
     reachedBoss: battle.bossSpawned,
     sends, fusions, passes: battle.passCount, kills: battle.killCount,
+    expired: battle.expiredCount || 0,
     parts: battle.partner.parts.map(p => p.kind),
   };
 }
@@ -122,6 +127,7 @@ function summarize(name, results) {
     avgBossHpLeftOnLoss: avg('bossHpLeft', r => r.reachedBoss && !r.win),
     avgDeathTime: avg('time', r => !r.win),
     avgSends: avg('sends'), avgFusions: avg('fusions'), avgPasses: avg('passes'), avgKills: avg('kills'),
+    avgExpired: avg('expired'),
   };
 }
 
@@ -135,12 +141,12 @@ for (const name of order) {
 const pct = v => (v * 100).toFixed(1) + '%';
 const f1 = v => (isNaN(v) ? '-' : v.toFixed(1));
 console.log('runs per strategy: ' + N);
-console.log('strategy        win    reachBoss  hp@boss  bossHpLeft(loss)  deathT  sends fusions passes kills');
+console.log('strategy        win    reachBoss  hp@boss  bossHpLeft(loss)  deathT  sends fusions passes kills expired');
 for (const s of out) {
   console.log(
     s.name.padEnd(15) + ' ' + pct(s.winRate).padStart(6) + ' ' + pct(s.reachedBossRate).padStart(9) + '  ' +
     f1(s.avgHpAtBoss).padStart(7) + '  ' + f1(s.avgBossHpLeftOnLoss).padStart(16) + '  ' + f1(s.avgDeathTime).padStart(6) + '  ' +
-    f1(s.avgSends).padStart(5) + ' ' + f1(s.avgFusions).padStart(7) + ' ' + f1(s.avgPasses).padStart(6) + ' ' + f1(s.avgKills).padStart(5)
+    f1(s.avgSends).padStart(5) + ' ' + f1(s.avgFusions).padStart(7) + ' ' + f1(s.avgPasses).padStart(6) + ' ' + f1(s.avgKills).padStart(5) + ' ' + f1(s.avgExpired).padStart(7)
   );
 }
 if (process.argv.includes('--json')) console.log(JSON.stringify(out, null, 2));

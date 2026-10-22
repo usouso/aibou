@@ -77,6 +77,10 @@
     empty() { // 何も持っていないのに送ろうとした
       this.tone({ freq: 160, freqEnd: 120, type: 'square', dur: 0.08, vol: 0.08 });
     }
+    expire() { // 部品が時間で落ちた（小さく）
+      this.tone({ freq: 520, freqEnd: 180, type: 'sine', dur: 0.2, vol: 0.09 });
+      this.noise({ freq: 900, freqEnd: 300, dur: 0.08, vol: 0.05 });
+    }
     attach() { // 部品がついた
       this.tone({ freq: 320, freqEnd: 160, type: 'sine', dur: 0.14, vol: 0.2 });
       this.noise({ freq: 1500, dur: 0.04, vol: 0.1, filter: 'highpass' });

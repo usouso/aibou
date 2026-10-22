@@ -21,9 +21,8 @@ class BottomScene extends Phaser.Scene {
     this.partner = this.add.container(this.px, this.groundY - 18).setDepth(10);
     this.pBody = this.add.image(0, 0, 'partner0');
     this.partner.add(this.pBody);
-    this.partSprites = [];
+    this.partViews = [];   // 部品ごとの絵（時間で小さくなる）
     this.wingSprites = [];
-    this.glowSprite = null;
 
     this.hpBar = this.add.graphics().setDepth(20);
     this.bossBar = this.add.graphics().setDepth(20);
@@ -58,47 +57,62 @@ class BottomScene extends Phaser.Scene {
 
   // ---- 部品の見た目 ----
   rebuildParts() {
-    this.partSprites.forEach(s => s.destroy());
-    this.partSprites = []; this.wingSprites = [];
-    if (this.glowSprite) { this.glowSprite.destroy(); this.glowSprite = null; }
+    this.partViews.forEach(v => v.sprites.forEach(s => s.destroy()));
+    this.partViews = []; this.wingSprites = [];
     const parts = this.battle.partner.parts;
     const counts = {};
     parts.forEach(p => {
       const i = counts[p.kind] || 0; counts[p.kind] = i + 1;
-      let s;
+      const view = { part: p, sprites: [], base: [] };
+      const add = (s, back, isGlow) => {
+        if (back) this.partner.addAt(s, 0); else this.partner.add(s);
+        s.isGlow = !!isGlow;
+        view.sprites.push(s);
+        view.base.push({ sx: s.scaleX, sy: s.scaleY, a: s.alpha });
+      };
+      let s, g;
       switch (p.kind) {
         case 'horn':
-          s = this.add.image(8 - i * 10, -28 - i * 2, 'p_horn').setOrigin(0.5, 1);
-          this.partner.add(s); break;
+          add(this.add.image(8 - i * 10, -28 - i * 2, 'p_horn').setOrigin(0.5, 1)); break;
         case 'thunder':
-          s = this.add.image(6 - i * 10, -30, 'p_thunder').setOrigin(0.5, 1);
-          this.partner.add(s);
-          this.glowSprite = this.add.image(6, -40, 'glow').setTint(0x7cf7ff).setAlpha(0.5).setScale(0.9).setBlendMode(Phaser.BlendModes.ADD);
-          this.partner.add(this.glowSprite); break;
+          add(this.add.image(6 - i * 10, -30, 'p_thunder').setOrigin(0.5, 1));
+          g = this.add.image(6, -40, 'glow').setTint(0x7cf7ff).setAlpha(0.5).setScale(0.9).setBlendMode(Phaser.BlendModes.ADD);
+          add(g, false, true); break;
         case 'iron':
-          s = this.add.image(6 - i * 10, -30, 'p_iron').setOrigin(0.5, 1);
-          this.partner.add(s); break;
+          add(this.add.image(6 - i * 10, -30, 'p_iron').setOrigin(0.5, 1)); break;
         case 'wing':
           s = this.add.image(-16 - i * 4, -8 - i * 4, 'p_wing0').setOrigin(0.5, 1);
-          this.partner.addAt(s, 0); this.wingSprites.push({ s, k: 'p_wing' }); break;
+          add(s, true); this.wingSprites.push({ s, k: 'p_wing' }); break;
         case 'petal':
           s = this.add.image(-16 - i * 4, -8 - i * 4, 'p_petal0').setOrigin(0.5, 1);
-          this.partner.addAt(s, 0); this.wingSprites.push({ s, k: 'p_petal' }); break;
+          add(s, true); this.wingSprites.push({ s, k: 'p_petal' }); break;
         case 'stone':
-          s = this.add.image(0, 2 + i * 3, 'p_stone').setAlpha(0.95);
-          this.partner.add(s); break;
+          add(this.add.image(0, 2 + i * 3, 'p_stone').setAlpha(0.95)); break;
         case 'moss':
-          s = this.add.image(0, 2 + i * 3, 'p_moss');
-          this.partner.add(s);
-          this.glowSprite = this.add.image(0, 0, 'glow').setTint(0xb6ff7a).setAlpha(0.35).setScale(1.8).setBlendMode(Phaser.BlendModes.ADD);
-          this.partner.addAt(this.glowSprite, 0); break;
+          add(this.add.image(0, 2 + i * 3, 'p_moss'));
+          g = this.add.image(0, 0, 'glow').setTint(0xb6ff7a).setAlpha(0.35).setScale(1.8).setBlendMode(Phaser.BlendModes.ADD);
+          add(g, true, true); break;
         case 'flower':
-          s = this.add.image(-10 - i * 8, -26, 'p_flower').setOrigin(0.5, 1);
-          this.partner.add(s); break;
+          add(this.add.image(-10 - i * 8, -26, 'p_flower').setOrigin(0.5, 1)); break;
       }
-      if (s) { this.partSprites.push(s); }
+      this.partViews.push(view);
     });
-    if (this.glowSprite) this.partSprites.push(this.glowSprite);
+  }
+
+  // 残り時間が短い部品は小さくなり、最後は点滅する
+  updatePartViews(time) {
+    for (const v of this.partViews) {
+      const life = v.part.life, max = v.part.maxLife || 25;
+      const shrinkFrom = Math.min(10, max * 0.4);
+      const k = life < shrinkFrom ? 0.45 + 0.55 * Math.max(0, life / shrinkFrom) : 1;
+      const blink = life < 3 ? (Math.floor(time / 90) % 2 ? 0.3 : 1) : 1;
+      v.sprites.forEach((s, j) => {
+        const b = v.base[j];
+        s.setScale(b.sx * k, b.sy * k);
+        const glowPulse = s.isGlow ? (0.6 + 0.4 * Math.sin(time * 0.006)) : 1;
+        s.setAlpha(b.a * blink * glowPulse);
+      });
+    }
   }
 
   // ---- 敵の見た目 ----
@@ -217,13 +231,17 @@ class BottomScene extends Phaser.Scene {
           if (!ev.part.fused) { A.sfx.attach(); this.burst(this.partner.x, this.partner.y - 20, 0xffffff, 6, 26); }
           break;
         }
-        case 'partDropped': {
+        case 'partDropped':
+        case 'partExpired': {
+          this.rebuildParts();
           const key = this.partKey(ev.part.kind);
           if (key) {
-            const d = this.add.image(this.partner.x - 10, this.partner.y - 20, key).setDepth(11);
+            const small = ev.type === 'partExpired';
+            const d = this.add.image(this.partner.x - 10, this.partner.y - 20, key).setDepth(11).setScale(small ? 0.5 : 1);
             this.tweens.add({ targets: d, x: d.x - 40, y: d.y + 70, angle: -120, alpha: 0, duration: 700, ease: 'Quad.easeIn', onComplete: () => d.destroy() });
+            if (small) this.burst(this.partner.x - 4, this.partner.y - 22, 0xc0c8d0, 4, 18);
           }
-          A.sfx.drop();
+          if (ev.type === 'partExpired') A.sfx.expire(); else A.sfx.drop();
           break;
         }
         case 'fusion': {
@@ -312,7 +330,7 @@ class BottomScene extends Phaser.Scene {
     this.tweens.add({ targets: this.partner, angle: 90, y: this.groundY - 6, x: this.px - 10, duration: 700, ease: 'Bounce.easeOut' });
     this.tweens.add({ targets: this.dusk, alpha: 0.75, duration: 1600, delay: 300 });
     this.pBody.setTint(0x8a8a9a);
-    this.partSprites.forEach(s => s.setTint(0x8a8a9a));
+    this.partViews.forEach(v => v.sprites.forEach(s => s.setTint(0x8a8a9a)));
     A.bus.emit('result', 'lose');
   }
 
@@ -345,7 +363,7 @@ class BottomScene extends Phaser.Scene {
     }
     const wf = Math.floor(time / 140) % 2;
     this.wingSprites.forEach(w => w.s.setTexture(w.k + wf));
-    if (this.glowSprite) this.glowSprite.setAlpha(0.3 + 0.2 * Math.sin(time * 0.006));
+    this.updatePartViews(time);
     // 花びらの羽：通った後に花が咲く
     const hasPetal = this.battle.partner.parts.some(p => p.kind === 'petal');
     if (hasPetal && walking) {

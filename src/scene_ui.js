@@ -37,8 +37,6 @@ class UIScene extends Phaser.Scene {
     this.sendBtn.add(this.sendBg);
     this.slotPos = [{ x: -32, y: -22 }, { x: 32, y: -22 }];
     this.slotImgs = [null, null];
-    this.sparkle = this.add.image(0, -22, 'glow').setTint(0xfff3a0).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(0.8);
-    this.sendBtn.add(this.sparkle);
     this.drawSendBtn(false);
 
     // ---- 入力 ----
@@ -115,14 +113,8 @@ class UIScene extends Phaser.Scene {
       this.sendBtn.add(img);
       this.slotImgs[i] = img;
     });
-    this.sendBtn.bringToTop(this.sparkle);
     this.drawSendBtn(false);
-    const fus = S.held.length === 2 && AibouSim.fusionOf(S.held[0], S.held[1]);
-    this.tweens.killTweensOf(this.sparkle);
-    if (fus) {
-      this.sparkle.setAlpha(0.5);
-      this.tweens.add({ targets: this.sparkle, alpha: 0.95, scaleX: 1.1, scaleY: 1.1, duration: 380, yoyo: true, repeat: -1 });
-    } else this.sparkle.setAlpha(0);
+    // 合体する組かどうかのヒントは出さない（送ってみて初めて分かる）
     this.tweens.killTweensOf(this.sendBtn);
     this.sendBtn.setScale(1);
     if (S.held.length > 0) this.tweens.add({ targets: this.sendBtn, scaleX: 1.03, scaleY: 1.03, duration: 450, yoyo: true, repeat: -1 });

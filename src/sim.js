@@ -33,26 +33,30 @@
   const CONFIG = {
     partner: { hp: 150, atk: 16, atkInterval: 0.8, dodge: 0, regen: 0, speed: 60, reach: 40 },
     maxParts: 3,
+    partLife: 25,      // 部品がついてから落ちるまでの秒数（単品）
+    fusedLife: 35,     // 合体した部品は 2 つ分なので少し長持ち
     minDmgMul: 0.35,   // どれだけ硬くても、受けるダメージは 35% までしか減らない
     dodgeCap: 0.55,
     firstStrike: 0.6,  // 敵が相棒に届いてから一発目までの秒数
     bossTime: 140,
     spawnX: 520,
+    mobHpMul: 1,       // ボス以外の敵の体力の倍率
+    mobAtkMul: 0.8,    // ボス以外の敵の攻撃の倍率（部品が外れるようになった分、少し弱く）
     fusionBurst: { damage: 20, knockback: 90, stun: 0.8, range: 340 },
     enemies: {
       slime: { hp: 30, atk: 6, atkInterval: 1.0, speed: 40, passTime: 3.0 },
       bat:   { hp: 18, atk: 4, atkInterval: 0.7, speed: 80, passTime: 2.0 },
-      tough: { hp: 60, atk: 9, atkInterval: 1.3, speed: 30, passTime: 4.5 },
-      boss:  { hp: 280, atk: 24, atkInterval: 1.2, speed: 25, passTime: Infinity },
+      tough: { hp: 50, atk: 8, atkInterval: 1.3, speed: 30, passTime: 4.5 },
+      boss:  { hp: 220, atk: 20, atkInterval: 1.2, speed: 25, passTime: Infinity },
     },
   };
 
   // 部品の効果（guard = 受けるダメージを減らす割合）
   const PART_EFFECTS = {
-    horn:    { atk: 10 },
-    wing:    { atkIntervalMul: 0.75, dodge: 0.2, speedMul: 1.4 },
-    stone:   { guard: 0.25 },
-    flower:  { regen: 0.7 },
+    horn:    { atk: 12 },
+    wing:    { atkIntervalMul: 0.75, dodge: 0.25, speedMul: 1.4 },
+    stone:   { guard: 0.3 },
+    flower:  { regen: 1.0 },
     thunder: { atk: 8, atkIntervalMul: 0.85, chain: { radius: 140, ratio: 0.5 } },
     moss:    { guard: 0.35, regen: 0.9 },
     iron:    { atk: 10, guard: 0.3, atkIntervalMul: 1.3, speedMul: 0.7 },
@@ -144,7 +148,8 @@
     }
 
     addPart(kind, fused) {
-      const part = { id: this.partSeq++, kind, fused: !!fused };
+      const life = fused ? this.cfg.fusedLife : this.cfg.partLife;
+      const part = { id: this.partSeq++, kind, fused: !!fused, life, maxLife: life };
       this.partner.parts.push(part);
       this.emit('partAttached', { part });
       if (this.partner.parts.length > this.cfg.maxParts) {
@@ -169,9 +174,12 @@
 
     spawn(type) {
       const d = this.cfg.enemies[type];
+      const boss = type === 'boss';
+      const hp = Math.round(d.hp * (boss ? 1 : (this.cfg.mobHpMul || 1)));
+      const atk = Math.round(d.atk * (boss ? 1 : (this.cfg.mobAtkMul || 1)));
       const e = {
-        id: this.nextId++, type, x: this.cfg.spawnX, hp: d.hp, maxHp: d.hp,
-        atk: d.atk, atkInterval: d.atkInterval, speed: d.speed, passTime: d.passTime,
+        id: this.nextId++, type, x: this.cfg.spawnX, hp, maxHp: hp,
+        atk, atkInterval: d.atkInterval, speed: d.speed, passTime: d.passTime,
         atkTimer: this.cfg.firstStrike != null ? this.cfg.firstStrike : d.atkInterval * 0.6,
         contactTime: 0, state: 'approach', stun: 0, passT: 0, dead: false,
       };
@@ -284,6 +292,17 @@
         }
       } else {
         p.atkTimer = Math.min(p.atkTimer, 0.25);
+      }
+
+      // 部品は時間で小さくなって落ちる
+      if (p.parts.length) {
+        const keep = [];
+        for (const part of p.parts) {
+          part.life -= dt;
+          if (part.life <= 0) { this.expiredCount = (this.expiredCount || 0) + 1; this.emit('partExpired', { part }); }
+          else keep.push(part);
+        }
+        p.parts = keep;
       }
 
       if (st.regen > 0 && p.hp < p.maxHp) {
